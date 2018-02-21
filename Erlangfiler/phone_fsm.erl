@@ -25,14 +25,15 @@ start_link(PhoneNumber)->
 stop(FsmPid)-> 
 	hlr:detach(),
 	exit(normal,self()).
+
 	
 connect(FsmPid) ->
-	gen_statem:cast(?MODULE, {connect,FsmPid}).
+	gen_statem:cast(FsmPid, {connect,self()}).
 
 
 disconnect(FsmPid)->
     %When disconnected enter state: disconnected, where it cant be called
-	gen_statem:cast(?MODULE, disconnect).
+	gen_statem:cast(FsmPid, disconnect).
 	
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -58,14 +59,14 @@ inbound(FsmPid) -> ok.
 % Client functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 action(FsmPid,Action) ->
-	gen_statem:cast(?MODULE,Action).
+	gen_statem:cast(FsmPid,Action).
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Disconnect
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-disconnected(cast, {connect,FsmPid},FsmPid)->
-	{next_state,idle,FsmPid};
+disconnected(cast, {connect,PhonePid},LoopData)->
+	{next_state,idle,PhonePid};
 disconnected(cast, _Other, LoopData)->
 	{keep_state,LoopData}.
 
@@ -74,9 +75,11 @@ disconnected(cast, _Other, LoopData)->
 % Idle
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 idle(cast,{outbound,PhoneNumber},LoopData)->
+	phone_fsm:inbound(hlr:lookup_id(PhoneNumber)),
 	{next_state,calling,LoopData};
 idle(cast,{inbound,PhoneNumber},LoopData)->
-	{next_state,receiving,LoopData};
+	phone_sim:reply(LoopData,{inbound,bajs}),
+	{next_state,receiving,PhoneNumber};
 idle(cast, disconnect,LoopData)->
 	{next_state,disconnected,LoopData};
 idle(cast,_Other,LoopData)->
