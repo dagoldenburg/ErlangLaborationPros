@@ -11,6 +11,8 @@
 -export([init/1,callback_mode/0]).
 -export([busy/1,reject/1,accept/1,hangup/1,inbound/1]).
 -export([action/2]).
+%States
+-export([disconnected/3,idle/3,connected/3,receiving/3,calling/3]).
 
 
 
@@ -20,11 +22,12 @@
 
 start_link(PhoneNumber)->
 	hlr:attach(PhoneNumber),
-	gen_statem:start_link({local,?MODULE}, ?MODULE,[],[]).
+	gen_statem:start_link(?MODULE,[],[]).
 
 stop(FsmPid)-> 
 	hlr:detach(),
-	exit(normal,self()).
+	exit(normal,self()),
+	ok.
 	
 connect(FsmPid) ->
 	gen_statem:cast(?MODULE, {connect,FsmPid}).
@@ -46,13 +49,21 @@ callback_mode() -> state_functions.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Client functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-busy(FsmPid) -> ok.
-reject(FsmPid) -> ok.
-accept(FsmPid) -> ok.
-hangup(FsmPid) -> ok.
-inbound(FsmPid) -> ok.
-
-
+busy(FsmPid) ->
+  gen_statem:cast(?MODULE,busy),
+  ok.
+reject(FsmPid) ->
+  gen_statem:cast(?MODULE,reject),
+  ok.
+accept(FsmPid) ->
+  gen_statem:cast(?MODULE,accept),
+  ok.
+hangup(FsmPid) ->
+  gen_statem:cast(?MODULE,hangup),
+  ok.
+inbound(FsmPid) ->
+  gen_statem:cast(?MODULE,{inbound,hlr:lookup_phone(FsmPid)}),
+  ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Client functions
