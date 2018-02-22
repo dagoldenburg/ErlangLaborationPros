@@ -39,7 +39,7 @@ hlr() ->
   ok = phone_fsm:stop(FsmPid), % Need to call hlr:detach() from a process
   timer:sleep(1000),
   {error, invalid} = hlr:lookup_id("123"),
-  %hlr:stop(),
+  hlr:stop(),
   ok.
 
 bsc_sup() ->

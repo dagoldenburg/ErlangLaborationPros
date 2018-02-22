@@ -47,6 +47,9 @@ handle_call({match,Element},_From,Db) ->
 		[H|_T] -> {reply,{ok,H},Db}
 	end.
 	
+
+handle_cast(stop,Hlr) ->
+	{stop,normal,Hlr};	
 handle_cast({write,Key,Element},Db) ->
 io:fwrite("fwrite: HLR Write~n", []),
 	{noreply,db:write(Key,Element,Db)};
