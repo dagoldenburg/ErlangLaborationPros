@@ -11,6 +11,8 @@
 -export([init/1,callback_mode/0]).
 -export([busy/1,reject/1,accept/1,hangup/1,inbound/1]).
 -export([action/2]).
+%States
+-export([disconnected/3,idle/3,connected/3,receiving/3,calling/3]).
 
 
 
@@ -19,13 +21,11 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 start_link(PhoneNumber)->
-	hlr:attach(PhoneNumber),
-	gen_statem:start_link({local,?MODULE}, ?MODULE,[],[]).
+	gen_statem:start_link(?MODULE,[PhoneNumber],[]).
 
 stop(FsmPid)-> 
-	hlr:detach(),
-	exit(normal,self()).
-
+	gen_statem:cast(FsmPid,disconnect),
+	ok.
 	
 connect(FsmPid) ->
 	gen_statem:cast(FsmPid, {connect,self()}).
@@ -39,21 +39,30 @@ disconnect(FsmPid)->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Callback Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-init([])->
-	{ok, disconnected, self()}.
+init([PhoneNumber])->
+	hlr:attach(PhoneNumber),
+	{ok, idle, self()}.
 		
 callback_mode() -> state_functions.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Client functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-busy(FsmPid) -> ok.
-reject(FsmPid) -> ok.
-accept(FsmPid) -> ok.
-hangup(FsmPid) -> ok.
-inbound(FsmPid) -> ok.
-
-
+busy(FsmPid) ->
+  gen_statem:cast(?MODULE,busy),
+  ok.
+reject(FsmPid) ->
+  gen_statem:cast(?MODULE,reject),
+  ok.
+accept(FsmPid) ->
+  gen_statem:cast(?MODULE,accept),
+  ok.
+hangup(FsmPid) ->
+  gen_statem:cast(?MODULE,hangup),
+  ok.
+inbound(FsmPid) ->
+  gen_statem:cast(?MODULE,{inbound,hlr:lookup_phone(FsmPid)}),
+  ok.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Client functions
@@ -68,6 +77,7 @@ action(FsmPid,Action) ->
 disconnected(cast, {connect,PhonePid},LoopData)->
 	{next_state,idle,PhonePid};
 disconnected(cast, _Other, LoopData)->
+io:fwrite("fwrite: PHONE_FSM disconnected _Other~n", []),
 	{keep_state,LoopData}.
 
 
@@ -81,6 +91,8 @@ idle(cast,{inbound,PhoneNumber},LoopData)->
 	phone_sim:reply(LoopData,{inbound,bajs}),
 	{next_state,receiving,PhoneNumber};
 idle(cast, disconnect,LoopData)->
+	io:fwrite("fwrite: PHONE_FSM idle disconnect~n", []),
+	hlr:detach(),
 	{next_state,disconnected,LoopData};
 idle(cast,_Other,LoopData)->
 	{keep_state,LoopData}.
@@ -93,6 +105,7 @@ calling(cast,hangup,LoopData)->
 calling(cast,accept,LoopData)->
 	{next_state,connected,LoopData};
 calling(cast, disconnect,LoopData)->
+	hlr:detach(),
 	{next_state,disconnected,LoopData};
 calling(cast,_Other,LoopData)->
 	{next_state,idle,LoopData}.
@@ -106,6 +119,7 @@ receiving(cast,reject,LoopData)->
 receiving(cast,accept,LoopData)->
 	{next_state,connected,LoopData};
 receiving(cast, disconnect,LoopData)->
+	hlr:detach(),
 	{next_state,disconnected,LoopData};
 receiving(_,_Other,LoopData)->
 	{keep_state,LoopData}.
@@ -116,6 +130,7 @@ receiving(_,_Other,LoopData)->
 connected(cast,hangup,LoopData)->
 	{next_state,idle,LoopData};
 connected(cast, disconnect,LoopData)->
+	hlr:detach(),
 	{next_state,disconnected,LoopData};
 connected(cast,_Other,LoopData)->
 	{keep_state,LoopData}.

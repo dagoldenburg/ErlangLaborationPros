@@ -4,7 +4,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 -module(dbtree).
--export([write/3, new/0, read/2, delete/2,match/2,destroy/1]).
+-export([write/3, new/0, read/2, delete/2,match/2,destroy/1,flatten/1,concatenate/1,concatenate1/2]).
 
 %% @doc Creates a new database tree
 new() -> empty.
@@ -76,17 +76,37 @@ match(_Element,empty) -> [];
 
 match(Element,{Key,Element,Left,Right}) ->
 	L = [Key | match(Element,Left)],
-	[L | match(Element,Right)];
+	flatten([L | match(Element,Right)]);
 
 match(Element,{_Key,_E,Left,Right}) ->
 	L = match(Element,Left),
-	[L | match(Element,Right)].
+	flatten([L | match(Element,Right)]).
 	
 	
 destroy(_Db) -> 
 	ok.
 	
-	
+%% @doc Given a list of lists, returns a new list containing the
+ %% elements of the lists.
+-spec concatenate([list()]) -> list().
+concatenate([]) -> [];
+concatenate([H|T]) ->
+	concatenate1(H, T).
+
+concatenate1([H|T], Lists) ->
+	[H|concatenate1(T, Lists)];
+concatenate1([], Lists) ->
+	concatenate(Lists).
+
+
+%% @doc Takes a list and recursively flattens it.
+-spec flatten(list()) -> list().
+flatten([H|T]) when is_list(H) ->
+	concatenate([flatten(H), flatten(T)]);
+flatten([H|T]) ->
+	[H|flatten(T)];
+flatten([]) ->
+	[].
 	
 	
 	
