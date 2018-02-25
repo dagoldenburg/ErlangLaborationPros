@@ -78,7 +78,7 @@ phone_fsm_sup() ->
   timer:sleep(2000),
   ok = lookup_phones(["123", "124", "125"]),
 
-  %hlr:stop(),
+  hlr:stop(),
   ok.
 
 phone_simulator() ->
@@ -133,6 +133,7 @@ phone_fsm_all() ->
   ok = phone:stop(P124),
   ok = phone:stop(P125),
 
+  hlr:stop(),
   ok.
 
 phone_fsm_task() ->

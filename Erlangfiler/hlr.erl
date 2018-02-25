@@ -16,7 +16,7 @@ start_link()->
 	
 %% @doc Ends the database instance
 stop() ->
-	gen_server:cast({global,hlren},stop).
+	gen_server:stop({global,hlren}).
 
 attach(PhoneNumber) ->
 	gen_server:cast({global,hlren}, {write,self(), PhoneNumber}).
@@ -31,11 +31,13 @@ lookup_phone(Pid) ->
 	gen_server:call({global,hlren}, {read,Pid}).
 	
 init([]) ->
-io:fwrite("fwrite: HLR Init~n", []),
+	io:fwrite("fwrite: HLR Init~n", []),
 	{ok,db:new()}.
 	
 terminate(_, Db) ->
-	db:destroy(Db).
+	io:fwrite("fwrite: HLR TERMINATE WORKY~n", []),
+	db:destroy(Db),
+	ok.
 handle_call({read,Key},_From,Db) ->
 	io:fwrite("fwrite: HLR Read~n", []),
 	{reply,db:read(Key,Db),Db};
@@ -49,13 +51,15 @@ handle_call({match,Element},_From,Db) ->
 	
 
 handle_cast(stop,Hlr) ->
+	io:fwrite("fwrite: HLR STOPPING MYSELF~n", []),
+	
 	{stop,normal,Hlr};	
 handle_cast({write,Key,Element},Db) ->
 io:fwrite("fwrite: HLR Write~n", []),
 	{noreply,db:write(Key,Element,Db)};
 
 handle_cast({delete,Key},Db) ->
-io:fwrite("fwrite: HLR Delete~n", []),
+	io:fwrite("fwrite: HLR Delete~n", []),
 	Db1 = db:delete(Key,Db),
 	{noreply,Db1}.
 
