@@ -95,6 +95,7 @@ idle(cast,{outbound,PhoneNumber},SelfPhonePid)->
 	Result = hlr:lookup_id(PhoneNumber), %%%%%%%%%LOOKUP FSM PID
 	case Result of
 		{error,invalid}->
+			phone:reply(SelfPhonePid,invalid),
 			{keep_state,SelfPhonePid};
 		{ok,Pid}->
 			phone_fsm:inbound(Pid),
