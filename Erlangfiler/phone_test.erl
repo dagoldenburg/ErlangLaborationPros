@@ -50,12 +50,13 @@ bsc_sup() ->
   ok = bsc_mod_controllers(bsc_sup, add, Sup, ["123", "124", "125"]),
 
   Pid = whereis(phone_fsm_sup),
-
+  io:format("print: ~p~n",[Pid]),
   io:format("Current controllers ~p \n", [supervisor:which_children(Pid)]),
   timer:sleep(1000),
 
   ok = bsc_mod_controllers(bsc_sup, remove, Sup, ["123", "124", "125"]),
   io:format("Current controllers ~p \n", [supervisor:which_children(Pid)]),
+  bsc_sup:stop(Sup),
   ok.
 
 phone_fsm_sup() ->
@@ -155,7 +156,7 @@ phone_fsm_task() ->
   ok = phone:stop(P123),
   ok = phone:stop(P124),
   ok = phone:stop(P125),
-
+  hlr:stop(),
   ok.
 
 lookup_phones(Numbers) ->

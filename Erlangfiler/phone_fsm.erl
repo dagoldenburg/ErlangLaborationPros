@@ -23,8 +23,9 @@
 start_link(PhoneNumber)->
 	gen_statem:start_link(?MODULE,[PhoneNumber],[]).
 
-stop(FsmPid)-> 
+stop(FsmPid)->
 	gen_statem:cast(FsmPid,disconnect),
+	exit(FsmPid,normal),
 	ok.
 	
 connect(FsmPid) ->
@@ -75,13 +76,11 @@ action(FsmPid,Action) ->
 % Disconnect
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 disconnected(cast, {connect,PhonePid},_LoopData)->
-	io:fwrite("fwrite: PHONE_FSM disconnected Connect~n", []),
 	{next_state,idle,PhonePid};
 disconnected(cast, disconnect,_LoopData)->
 	hlr:detach(),
 	{keep_state,null};
 disconnected(cast, _Other, LoopData)->
-	io:fwrite("fwrite: PHONE_FSM disconnected _Other~n", []),
 	{keep_state,LoopData}.
 
 
@@ -91,7 +90,6 @@ disconnected(cast, _Other, LoopData)->
 % Idle
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 idle(cast,{outbound,PhoneNumber},SelfPhonePid)->
-	io:fwrite("fwrite: PHONE_FSM idle outbound~n", []),
 	Result = hlr:lookup_id(PhoneNumber), %%%%%%%%%LOOKUP FSM PID
 	case Result of
 		{error,invalid}->
@@ -102,15 +100,12 @@ idle(cast,{outbound,PhoneNumber},SelfPhonePid)->
 			{next_state,calling,{SelfPhonePid,Pid}}
 	end;
 idle(cast,{inbound,OtherFsmPid},SelfPhonePid)->
-	io:fwrite("fwrite: PHONE_FSM idle inbound~n", []),
 	phone:reply(SelfPhonePid,{inbound,something}),
 	{next_state,receiving,{SelfPhonePid,OtherFsmPid}};
 idle(cast, disconnect,LoopData)->
-	io:fwrite("fwrite: PHONE_FSM idle disconnect~n", []),
 	hlr:detach(),
 	{next_state,disconnected,LoopData};
 idle(cast,_Other,LoopData)->
-	io:fwrite("fwrite: PHONE_FSM idle OTHER~n", []),
 	{keep_state,LoopData}.
 
 	
@@ -119,27 +114,21 @@ idle(cast,_Other,LoopData)->
 % Calling
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 calling(cast,reject,{SelfPhonePid,_OtherFsmPid})->
-	io:fwrite("fwrite: PHONE_FSM calling reject~n", []),
 	phone:reply(SelfPhonePid,reject), %%%%%%%%%%%%%%%%PHONE PID???
 	{next_state,idle,SelfPhonePid};
 calling(cast,accept,{SelfPhonePid,OtherFsmPid})->
-	io:fwrite("fwrite: PHONE_FSM calling accept~n", []),
 	phone:reply(SelfPhonePid,accept),
 	{next_state,connected,{SelfPhonePid,OtherFsmPid}};
 calling(cast, disconnect,{_SelfPhonePid,_OtherFsmPid})->
-	io:fwrite("fwrite: PHONE_FSM calling disconnect~n", []),
 	hlr:detach(),
 	{next_state,disconnected,null};
 calling(cast,busy,{SelfPhonePid,_OtherFsmPid})->
-	io:fwrite("fwrite: PHONE_FSM calling busy~n", []),
 	phone:reply(SelfPhonePid,busy),
 	{next_state,idle,SelfPhonePid};	
 calling(cast, {inbound,OtherFsmPid},LoopData)->
-	io:fwrite("fwrite: PHONE_FSM calling inbound~n", []),
 	phone_fsm:busy(OtherFsmPid),
 	{keep_state,LoopData};
 calling(cast,_Other,LoopData)->
-	io:fwrite("fwrite: PHONE_FSM calling other~n", []),
 	{keep_state,LoopData}.
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -147,38 +136,29 @@ calling(cast,_Other,LoopData)->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 receiving(cast,reject,{SelfPhonePid,OtherFsmPid})->
 	phone_fsm:reject(OtherFsmPid),
-	io:fwrite("fwrite: PHONE_FSM receiving reject~n", []),
 	{next_state,idle,SelfPhonePid};
 receiving(cast,accept,{SelfPhonePid,OtherFsmPid})->
 	phone_fsm:accept(OtherFsmPid),
-	io:fwrite("fwrite: PHONE_FSM receiving accept~n", []),
 	{next_state,connected,{SelfPhonePid,OtherFsmPid}};
 receiving(cast, disconnect,_LoopData)->
-	io:fwrite("fwrite: PHONE_FSM receiving disconnect~n", []),
 	hlr:detach(),
 	{next_state,disconnected,null};
 receiving(cast, {inbound,OtherFsmPid},LoopData)->
-	io:fwrite("fwrite: PHONE_FSM receiving inbound~n", []),
 	phone_fsm:busy(OtherFsmPid),
 	{keep_state,LoopData};
 receiving(_,_Other,LoopData)->
-	io:fwrite("fwrite: PHONE_FSM receiving OTHER~n", []),
 	{keep_state,LoopData}.
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Connected
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 connected(cast,hangup,{SelfPhonePid,_OtherFsmPid})->
-	io:fwrite("fwrite: PHONE_FSM connected hangup~n", []),
 	{next_state,idle,SelfPhonePid};
 connected(cast, disconnect,{_SelfPhonePid,_OtherFsmPid})->
-	io:fwrite("fwrite: PHONE_FSM connected disconnect~n", []),
 	hlr:detach(),
 	{next_state,disconnected,null};
 connected(cast, {inbound,OtherFsmPid},LoopData)->
-	io:fwrite("fwrite: PHONE_FSM connected inbound~n", []),
 	phone_fsm:busy(OtherFsmPid),
 	{keep_state,LoopData};
 connected(cast,_Other,LoopData)->
-	io:fwrite("fwrite: PHONE_FSM connected OTHER~n", []),
 	{keep_state,LoopData}.
