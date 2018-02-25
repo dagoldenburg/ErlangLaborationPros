@@ -13,17 +13,18 @@
 
 %% API
 -export([start_link/0, stop/1, add_controller/2, remove_controller/2, init/1]).
-%Starts a new empty phone controller supervisor that is linked to the calling process.
+
+%Starts the phone supervisor
 start_link()->
   supervisor:start_link({local,?MODULE},?MODULE,self()).
 
-%Stop the phone controller supervisor and terminate all the existing phone controllers.
+%Stops the supervisor
 stop(SupPid) ->
   exit(SupPid,normal),
   ok.
 
-%Start a new phone controller process for PhoneNumber and add it to the processes that the
-%supervisor manages.
+%Adds a controller that permanently gets restarted if it dies, shutdown time is 5000 ms and the controller is a worker
+%that is identified with its corresponding phonenumber.
 add_controller(SupPid, PhoneNumber) ->
   Restart = permanent,
   Shutdown = 5000,
@@ -31,14 +32,13 @@ add_controller(SupPid, PhoneNumber) ->
   ChildSpecifications = {PhoneNumber,{phone_fsm,start_link,[PhoneNumber]},Restart,Shutdown,Type,[phone_fsm]},
   supervisor:start_child(SupPid, ChildSpecifications).
 
-%Remove the phone controller for PhoneNumber from the processes which the supervisor
-%manages. Also terminate the controller process.
+%Removes the a childprocess identified with a corresponding phonenumber from the supervisor and stops the process
 remove_controller(SupPid, PhoneNumber) ->
   {ok,Pid} = hlr:lookup_id(PhoneNumber),
   supervisor:delete_child(SupPid, PhoneNumber),
   phone_fsm:stop(Pid),
   ok.
-
+%Supervisor flags, One for one restart flag(if a process dies only restart that process), max 5 restarts per second
 init(_Args) ->
   RestartStrategy = one_for_one,
   MaxRestarts = 5,
