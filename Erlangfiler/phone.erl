@@ -1,57 +1,42 @@
 %%%==============================================================
-%%% @Copyright (C) 1999-2013, Erlang Solutions Ltd
+%%% @Copyright (C) 1999-2018, Erlang Solutions Ltd
 %%% @Author Robert Virding <robert.virding@erlang-solutions.com>
-%%% @doc Phone simulator process for the Oxford CPR assignment.
+%%% @doc Phone process for the Oxford CPR assignment.
 %%% @end
 %%%==============================================================
 
-%% This is a simulator phone for testing the phone controller FSM. It
-%% is a drop-in replacement to phone.erl. The 'phone_fsm' will use
-%% calls to the 'phone' module but we will be at the other end so we
-%% MUST have exactly the same interface. This is unfortunate as a we
-%% need to be state aware so an FSM would have been better here.
-%%
-%% We implement an FSM by keeping a state field in the state
-%% data. Instead of trying to process the different states inside the
-%% handle_call/cast/info callbacks we explicitly call state callback
-%% functions to do the work. This allows us to be a gen_server while
-%% most of the code looks like an FSM. A much better solution.
+%% This phone module is very simple and basically just sends commands
+%% on to the phone controller FSM and display replies from it. We
+%% don't need a state machine and use a gen_server behaviour for this
+%% phone. It is asynchronous so the 2 user API functions are
+%% gen_server:casts. The local state contains our phone number and the
+%% pid of the controller process.
 
 -module(phone).
 
 -behaviour(gen_server).
 
 %% User API.
--export([start_link/1,start/1,stop/1,get_status/1]).
+-export([start_link/1,start/1,stop/1]).
 -export([action/2,reply/2]).
 
 %% Behaviour callbacks.
 -export([init/1,terminate/2,handle_call/3,handle_cast/2,
 	 handle_info/2,code_change/3]).
 
--record(st, {state=idle,num=none,fsm=none,to=infinity,stats={}}).
+-record(st, {num=none,contr=none}).
 
-%% Time limits for timeouts
--define(MIN_TIME, 2000).
--define(MAX_TIME, 10000).
-
--define(CONN_RATE, 80).				%Connection accept percentage
-
-%% Management API for each phone.
+%% Management API.
 start_link(Number) ->
     gen_server:start_link(?MODULE, Number, []).
 
 start(Number) ->
     gen_server:start(?MODULE, Number, []).
 
-stop(Fsm) ->
-    gen_server:call(Fsm, stop).
+stop(Pid) ->
+    gen_server:call(Pid, stop).
 
-get_status(Fsm) ->
-    gen_server:call(Fsm, get_status).
-
-%% User API, these must be the same as for phone as phone_fsm uses
-%% them!
+%% User API.
 action(Pid, Action) ->
     gen_server:cast(Pid, {action,Action}).
 
@@ -60,93 +45,54 @@ reply(Pid, Reply) ->
 
 %% Behaviour callbacks.
 
+%% init(Args) -> {ok,State} | {stop,Reason}.
+%%  Initialise the phone. Use the HLR to find the phone controller and
+%%  connect to it. If unavailable then return stop to terminate phone.
+
 init(Number) ->
-    random:seed(now()),				%Seed the RNG
     case hlr:lookup_id(Number) of
 	{ok,Pid} ->
 	    ok = phone_fsm:connect(Pid),
-	    {ok,#st{num=Number,fsm=Pid}};
+	    {ok,#st{num=Number,contr=Pid}};
 	{error,invalid} -> {stop,invalid}
     end.
 
-terminate(_, #st{fsm=Fsm}) ->
+%% terminate(Reason, State) -> ok.
+%%  Terminate the phone. Just disconnect the phone controller.
+
+terminate(_, #st{contr=Fsm}) ->
     phone_fsm:disconnect(Fsm),
     ok.
 
-handle_call(get_status, _, #st{stats=S}=St) ->
-    {reply,S,St};
 handle_call(stop, _, St) ->
     %% Do everything in terminate.
     {stop,normal,ok,St}.
 
-handle_info(timeout, #st{state=State}=St) ->
-    %% All timeouts go here, call state functions.
-    %%io:format("~p: timedout in ~w\n", [St#st.num,State]),
-    case State of
-	idle -> idle(timeout, St);
-	calling -> calling(timeout, St);
-	connected -> connected(timeout, St)
-    end;
-handle_info(_, St) -> {noreply,St}.		%Ignore everything else
-
-handle_cast(Cast, #st{state=State}=St) ->
-    %% All "events" go here, call state functions.
-    %%io:format("~p: action ~p in ~w\n", [St#st.num,Cast,State]),
-    case State of
-	idle -> idle(Cast, St);
-	calling -> calling(Cast, St);
-	connected -> connected(Cast, St)
-    end.
-
-%% State callback functions.
-
-idle({action,{call,Number}}, #st{fsm=Fsm}=St) ->
-    phone_fsm:action(Fsm, {outbound,Number}),
-    next_state(calling, St);
-idle({reply,{inbound,_}}, #st{fsm=Fsm}=St) ->
-    Chance = random:uniform(100),
-    if Chance < ?CONN_RATE ->			%Accept call
-	    phone_fsm:action(Fsm, accept),
-	    to_connected(St);
-       true ->					%Reject call
-	    phone_fsm:action(Fsm, reject),
-	    to_idle(St)
-    end;
-idle(_, St) -> {noreply,St}.		       %Ignore everything else
-
-calling({reply,accept}, St) ->
-    to_connected(St);
-calling({reply,reject}, St) ->
-    to_idle(St);
-calling({reply,busy}, St) ->
-    to_idle(St);
-calling(timeout, #st{fsm=Fsm}=St) ->
-    phone_fsm:action(Fsm, hangup),
-    to_idle(St);
-calling(_, St) ->				%Ignore everything else
-    {noreply,St,St#st.to}.
-
-connected({reply,hangup}, St) ->
-    next_state(idle, St);
-connected(timeout, #st{fsm=Fsm}=St) ->		%We timed out, hangup
-    phone_fsm:action(Fsm, hangup),
-    next_state(idle, St);
-connected(_, St) ->				%Ignore everything else
-    {noreply,St,St#st.to}.
-
-to_idle(St) -> next_state(idle, St).
-
-to_connected(St) ->
-    %% Generate a random timeout between ?MIN_TIME and ?MAX_TIME.
-    To = random:uniform(?MAX_TIME-?MIN_TIME) + ?MIN_TIME,
-    next_state(connected, To, St).
-
-next_state(State, St) ->
-    next_state(State, infinity, St).
-
-next_state(State, To, St) ->
-    %%io:format("~p: to state ~w\n", [St#st.num,State]),
-    {noreply,St#st{to=To,state=State},To}.
+handle_cast({action,Action}, #st{contr=Fsm}=St) ->
+    %% This gives us a check of Action.
+    PhoneAction = case Action of
+		      {call,Number} -> {outbound,Number};
+		      accept -> accept;
+		      reject -> reject;
+		      hangup -> hangup
+    end,
+    phone_fsm:action(Fsm, PhoneAction),
+    {noreply,St};
+handle_cast({reply,Reply}, #st{num=Num}=St) ->
+    %% This gives us a check of Reply.
+    {F,As} = case Reply of
+		 {inbound,Number} -> {"inbound call from ~s",[Number]};
+		 accept -> {"call accepted",[]};
+		 reject -> {"call rejected",[]};
+		 hangup -> {"remote hangup",[]};
+		 busy -> {"busy",[]};
+		 invalid -> {"invalid call",[]}
+	     end,
+    %% Now generate the format call arguments and call it.
+    io:format("~p: ~s: " ++ F ++ "\n", [self(),Num|As]),
+    {noreply,St}.
 
 %% Unused callbacks.
+handle_info(_, St) -> {noreply,St}.
+
 code_change(_, St, _) -> {ok,St}.
