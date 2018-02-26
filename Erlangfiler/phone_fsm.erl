@@ -20,18 +20,21 @@
 % Client Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%Starts a new Phone Controller process and attaches PhoneNumber to it in the backend database
 start_link(PhoneNumber)->
 	gen_statem:start_link(?MODULE,[PhoneNumber],[]).
 
+%Terminates a Phone Controller process with pid of FsmPid. Detaches its phone number from the database.
 stop(FsmPid)->
 	gen_statem:cast(FsmPid,disconnect),
 	exit(FsmPid,normal),
 	ok.
-	
+
+%Used by phones to connect to a Phone Controller so phone controller can pass messages to it.
 connect(FsmPid) ->
 	gen_statem:cast(FsmPid, {connect,self()}).
 
-
+%Disconnects a phone from a phone controller.
 disconnect(FsmPid)->
     %When disconnected enter state: disconnected, where it cant be called
 	gen_statem:cast(FsmPid, disconnect).
@@ -40,14 +43,18 @@ disconnect(FsmPid)->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Callback Functions
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Initiates a Phone Controller and attaches the phone number to HLR.
 init([PhoneNumber])->
 	hlr:attach(PhoneNumber),
 	{ok, disconnected, self()}.
 		
+%Sets the callback mode
 callback_mode() -> state_functions.
 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Client functions
+% Controller functions
+% Used to pass messages between Phone Controllers
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 busy(FsmPid) ->
   gen_statem:cast(FsmPid,busy),
@@ -67,6 +74,7 @@ inbound(FsmPid) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Client functions
+% Used by phones to pass messages to phone controller.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 action(FsmPid,Action) ->
 	gen_statem:cast(FsmPid,Action).
@@ -74,6 +82,7 @@ action(FsmPid,Action) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Disconnect
+% Action handler for disconnected state.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 disconnected(cast, {connect,PhonePid},_LoopData)->
 	{next_state,idle,PhonePid};
@@ -88,6 +97,7 @@ disconnected(cast, _Other, LoopData)->
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Idle
+% Action handler for idle state.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 idle(cast,{outbound,PhoneNumber},SelfPhonePid)->
 	Result = hlr:lookup_id(PhoneNumber), %%%%%%%%%LOOKUP FSM PID
@@ -112,6 +122,7 @@ idle(cast,_Other,LoopData)->
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Calling
+% Action handler for calling state.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 calling(cast,reject,{SelfPhonePid,_OtherFsmPid})->
 	phone:reply(SelfPhonePid,reject), %%%%%%%%%%%%%%%%PHONE PID???
@@ -133,6 +144,7 @@ calling(cast,_Other,LoopData)->
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Receiving
+% Action handler for receiving state.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%
 receiving(cast,reject,{SelfPhonePid,OtherFsmPid})->
 	phone_fsm:reject(OtherFsmPid),
@@ -151,6 +163,7 @@ receiving(_,_Other,LoopData)->
 	
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Connected
+% Action handler for connected state.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 connected(cast,hangup,{SelfPhonePid,_OtherFsmPid})->
 	{next_state,idle,SelfPhonePid};
